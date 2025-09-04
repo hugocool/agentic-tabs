@@ -67,7 +67,7 @@ function Manager() {
                                         <td style={{ padding: 4, maxWidth: 160, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{r.title || r.url}</td>
                                         <td style={{ padding: 4 }}>
                                             <select value={r.decision} onChange={e => setPreview(p => p && { ...p, rows: p.rows.map((x, j) => j === i ? { ...x, decision: e.target.value } : x) })}>
-                                                {['Keep','Archive','Drop','Review'].map(x => <option key={x} value={x}>{x}</option>)}
+                                                {['Keep', 'Archive', 'Drop', 'Review'].map(x => <option key={x} value={x}>{x}</option>)}
                                             </select>
                                         </td>
                                         <td style={{ padding: 4 }}>

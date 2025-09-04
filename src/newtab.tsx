@@ -19,10 +19,10 @@ function NewTab() {
   useEffect(() => { refreshSessions() }, [])
 
   return (
-  <div style={{ padding: 24, fontFamily: "system-ui" }}>
+    <div style={{ padding: 24, fontFamily: "system-ui" }}>
       <h2 style={{ marginTop: 0 }}>Agentic Sessions</h2>
       <div style={{ display: "flex", gap: 8 }}>
-  <button onClick={doStart}>Start session</button>
+        <button onClick={doStart}>Start session</button>
         <button disabled={!sessionId} onClick={runTriage}>Run triage</button>
         <button onClick={refreshSessions}>Refresh</button>
         <button onClick={openOptionsPage}>Options</button>

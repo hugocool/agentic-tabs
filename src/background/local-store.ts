@@ -119,13 +119,13 @@ export async function upsertSession(input: { sessionId: string; decisions: Decis
     const tail = mergedItems.slice(MAX_ITEMS_PER_SESSION).map(it => ({ ...it, decision: "Archive" as Decision }))
     mergedItems = head.concat(tail)
   }
-      const sessions = Object.values(store.sessions)
-      const combinedDecisionUrlSet = new Set<string>()
-      for (const s of sessions) {
-        for (const url of (s.keepSet || []).concat(s.reviewSet || [])) {
-          combinedDecisionUrlSet.add(url)
-        }
-      }
+  const sessions = Object.values(store.sessions)
+  const combinedDecisionUrlSet = new Set<string>()
+  for (const s of sessions) {
+    for (const url of (s.keepSet || []).concat(s.reviewSet || [])) {
+      combinedDecisionUrlSet.add(url)
+    }
+  }
   const updated: SessionLocal = computeCachedFields({
     ...existing,
     items: mergedItems,

@@ -92,9 +92,9 @@ export async function loadFromNotion(sessionId: string): Promise<{
     items: { url: string; title?: string; decision: "Keep"; group?: string }[]
 } | null> {
     try {
-    const env = await loadNotionEnv(); if (!env) return null
-    const { notionToken, resourcesDbId, sessionsDbId } = env
-    const notion = new Client({ auth: notionToken })
+        const env = await loadNotionEnv(); if (!env) return null
+        const { notionToken, resourcesDbId, sessionsDbId } = env
+        const notion = new Client({ auth: notionToken })
         // Find session page by Name title equals `Session <id>`
         const qRes = await notionCallSafe(() => notion.databases.query({
             database_id: sessionsDbId as string,
