@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
+import { openOptionsPage } from "./options-logic"
 
 function NewTab() {
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -44,6 +45,7 @@ function NewTab() {
         <button onClick={startSession}>Start session</button>
         <button disabled={!sessionId} onClick={runTriage}>Run triage</button>
         <button onClick={refreshSessions}>Refresh</button>
+        <button onClick={openOptionsPage}>Options</button>
       </div>
       <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>Session: {sessionId || "(none)"}</div>
       {lastAction && <div style={{ marginTop: 8, fontSize: 12 }}>{lastAction}</div>}

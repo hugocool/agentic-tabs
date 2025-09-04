@@ -32,6 +32,10 @@
     "chrome_url_overrides": {
       "newtab": "newtab.html"
     },
+    "options_ui": {
+      "page": "options.html",
+      "open_in_tab": true
+    },
     "action": {
       "default_title": "Agentic Tabs"
     }
@@ -52,6 +56,7 @@
     "@types/chrome": "^0.0.262",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
+    "@types/uuid": "^10.0.0",
     "plasmo": "^0.87.2",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"

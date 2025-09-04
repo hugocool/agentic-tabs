@@ -8,7 +8,7 @@ Plasmo + LangGraph.js powered browser extension for agentic tab triage, New Tab 
 - Pins a Manager tab (index 0, pinned) in every new window automatically.
 - Maintains a sessionId → windowIds mapping in `chrome.storage.session`.
 - Local persistence of sessions in `chrome.storage.local` with startup rehydration.
- - Ensures a pinned Manager tab exists in every window on install/startup (idempotent; no focus steal).
+- Ensures a pinned Manager tab exists in every window on install/startup (idempotent; no focus steal).
 - LangGraph pipeline: collect → classify → upsert (Notion) → act (close/group tabs).
 - On-device classifier via Chrome Prompt API (Gemini Nano) with cloud fallback for Edge/other Chromium.
 - Notion upsert: resources (by URL) + session page with relations.
@@ -63,6 +63,13 @@ Edge: edge://extensions → Developer Mode → Load unpacked → select build di
    ```
 
 Recommended DB properties (Resources): Name (title), URL (url), Status (select), Decision (select), Group/Project/Task (rich text). Sessions DB: Name (title), SavedAt (date), Resources (relation).
+
+## Options Page (MV3)
+
+- Open from the extension menu or programmatically via the New Tab or Manager page using the Options button, which calls `chrome.runtime.openOptionsPage()`.
+- Configure: Notion token, Resources DB ID, Sessions DB ID (optional Projects/Tasks DBs).
+- Test Connection: runs a Notion `databases.query` against the Resources DB (page_size 3) and shows a small sample.
+- Storage: values are stored in `chrome.storage.local` (not synced). For public distribution, prefer OAuth and a backend proxy.
 
 ## Running a Session
 

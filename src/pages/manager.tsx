@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { v4 as uuid } from "uuid"
+import { openOptionsPage } from "../options-logic"
 
 function Manager() {
     const [sessionId, setSessionId] = useState<string | null>(null)
@@ -44,6 +45,9 @@ function Manager() {
             </button>
             <button disabled={!sessionId || running} onClick={resume} style={{ marginTop: 8, marginLeft: 8 }}>
                 Resume session
+            </button>
+            <button onClick={openOptionsPage} style={{ marginTop: 8, marginLeft: 8 }}>
+                Options
             </button>
             {status && <div style={{ marginTop: 8, fontSize: 12 }}>{status}</div>}
             <hr />
