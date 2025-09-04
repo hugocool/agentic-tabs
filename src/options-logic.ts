@@ -28,7 +28,7 @@ export async function resetOptions(): Promise<void> {
 export async function testNotionConnection(opts: { notionToken: string; resourcesDbId: string }): Promise<{ ok: true; sample: string[] } | { ok: false; error: string }> {
   try {
     const notion = new Client({ auth: opts.notionToken })
-    const res = await notion.databases.query({ database_id: opts.resourcesDbId, page_size: 3 })
+    const res = await (notion as any).databases.query({ database_id: opts.resourcesDbId, page_size: 3 })
     const names = (res.results as any[])
       .slice(0, 3)
       .map((p: any) => p?.properties?.Name?.title?.[0]?.plain_text)
@@ -40,6 +40,6 @@ export async function testNotionConnection(opts: { notionToken: string; resource
 }
 
 export async function openOptionsPage() {
-  try { await chrome.runtime.openOptionsPage() } catch {}
+  try { await chrome.runtime.openOptionsPage() } catch { }
 }
 

@@ -23,7 +23,7 @@ export async function applyDecisions({ sessionId, decisions, options }: {
   // persist
   await upsertSession({ sessionId, decisions: decisions as any })
   // fire-and-forget notion
-  try { await upsertNotion({ sessionId, decisions: decisions as any }) } catch {}
+  try { await upsertNotion({ sessionId, decisions: decisions as any }) } catch { }
 
   const closeNonKeep = options?.closeNonKeep !== false
   const createGroups = options?.createGroups !== false
@@ -48,7 +48,9 @@ export async function applyDecisions({ sessionId, decisions, options }: {
       return t.id != null && n && (!keepSet.has(n)) && /^https?:\/\//i.test(t.url || "")
     })
     if (toClose.length) {
-      try { await chrome.tabs.remove(toClose.map(t => t.id!) as number[]) } catch {}
+      const arr = toClose.map(t => t.id!) as number[]
+      const tuple = [arr[0], ...arr.slice(1)] as [number, ...number[]]
+      try { await chrome.tabs.remove(tuple) } catch { }
       closedCount = toClose.length
     }
   }
@@ -67,16 +69,17 @@ export async function applyDecisions({ sessionId, decisions, options }: {
       byGroup[g].push(...ids)
     }
     for (const [name, ids] of Object.entries(byGroup)) {
-      if (ids.length < 2) continue
+      const unique = Array.from(new Set(ids))
+      if (unique.length < 2) continue
       try {
-        const gid = await chrome.tabs.group({ tabIds: Array.from(new Set(ids)) })
+        const tuple = [unique[0], ...unique.slice(1)] as [number, ...number[]]
+        const gid = await chrome.tabs.group({ tabIds: tuple }) as unknown as number
         await chrome.tabGroups.update(gid, { title: name, color: "blue" })
         grouped++
-      } catch {}
+      } catch { }
     }
   }
 
   await setLastApplied(sessionId, hash)
   return { openedCount: 0, closedCount, grouped, skipped: 0 }
 }
-

@@ -281,9 +281,11 @@ export async function resumeSessionOpenMissing(sessionId: string) {
     byGroup[g].push(...ids)
   }
   for (const [groupName, ids] of Object.entries(byGroup)) {
-    if (ids.length < 2) continue
+    const unique = Array.from(new Set(ids))
+    if (unique.length < 2) continue
     try {
-      const gid = await chrome.tabs.group({ tabIds: Array.from(new Set(ids)) })
+      const tuple = [unique[0], ...unique.slice(1)] as [number, ...number[]]
+      const gid = await chrome.tabs.group({ tabIds: tuple }) as unknown as number
       await chrome.tabGroups.update(gid, { title: groupName, color: "blue" })
     } catch (e) { console.warn("Grouping failed", e) }
   }
@@ -429,9 +431,11 @@ export async function resumeSession(args: {
         byGroup[g].push(...ids)
       }
       for (const [name, ids] of Object.entries(byGroup)) {
-        if (ids.length < 2) continue
+        const unique = Array.from(new Set(ids))
+        if (unique.length < 2) continue
         try {
-          const gid = await chrome.tabs.group({ tabIds: Array.from(new Set(ids)) })
+          const tuple = [unique[0], ...unique.slice(1)] as [number, ...number[]]
+          const gid = await chrome.tabs.group({ tabIds: tuple }) as unknown as number
           await chrome.tabGroups.update(gid, { title: name, color: "blue" })
           groupedCount++
         } catch (e) { console.warn("group failed", e) }

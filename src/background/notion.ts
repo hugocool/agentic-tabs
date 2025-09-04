@@ -28,7 +28,7 @@ export async function upsertNotion({ sessionId, decisions }: { sessionId: string
         if (!d.url) continue
         if (d.decision === "Drop") continue
         // Query by URL property
-        const qRes = await notionCallSafe(() => notion.databases.query({
+        const qRes = await notionCallSafe(() => (notion as any).databases.query({
             database_id: resourcesDbId as string,
             filter: { property: "URL", url: { equals: d.url as string } }
         }))
@@ -96,7 +96,7 @@ export async function loadFromNotion(sessionId: string): Promise<{
         const { notionToken, resourcesDbId, sessionsDbId } = env
         const notion = new Client({ auth: notionToken })
         // Find session page by Name title equals `Session <id>`
-        const qRes = await notionCallSafe(() => notion.databases.query({
+        const qRes = await notionCallSafe(() => (notion as any).databases.query({
             database_id: sessionsDbId as string,
             filter: {
                 property: "Name",
