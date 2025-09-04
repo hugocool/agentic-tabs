@@ -55,10 +55,23 @@ export function normalizeUrl(input?: string | null): string | undefined {
     // Drop tracking params
     const params = u.searchParams
     const toDelete: string[] = []
-    params.forEach((_, key) => {
-      if (/^(utm_|fbclid|gclid|yclid|msclkid|si|igshid|mc_eid|mc_cid|vero_id|_hs|ref|ref_src)$/i.test(key)) {
-        toDelete.push(key)
-      }
+    const TRACKING = new Set([
+      "fbclid",
+      "gclid",
+      "yclid",
+      "msclkid",
+      "si",
+      "igshid",
+      "mc_eid",
+      "mc_cid",
+      "vero_id",
+      "_hs",
+      "ref",
+      "ref_src"
+    ])
+    params.forEach((_, rawKey) => {
+      const key = rawKey.toLowerCase()
+      if (key.startsWith("utm_") || TRACKING.has(key)) toDelete.push(rawKey)
     })
     toDelete.forEach(k => params.delete(k))
     // Preserve original path case and trailing slash
@@ -93,7 +106,7 @@ function computeCachedFields(session: SessionLocal): SessionLocal {
     try {
       const d = new URL(n).hostname.toLowerCase()
       if (it.decision === "Keep" || it.decision === "Review") domains[d] = (domains[d] || 0) + 1
-    } catch {}
+    } catch { }
   }
   session.domains = domains
   session.keepSet = Array.from(new Set(keepSet))
@@ -434,7 +447,7 @@ export async function resumeSession(args: {
         const n = normalizeUrl(t.url)
         if (n) openSet.add(n)
       }
-    } catch {}
+    } catch { }
   }
 
   const toOpenNorm = computeToOpen({ decisions: session.items, includeArchive, alreadyOpen: openSet })
@@ -484,7 +497,7 @@ export async function resumeSession(args: {
           groupedCount++
         } catch (e) { console.warn("group failed", e) }
       }
-    } catch {}
+    } catch { }
   }
 
   // Focus handling
@@ -494,11 +507,11 @@ export async function resumeSession(args: {
       const allTabs = await chrome.tabs.query({ windowId: primaryWin })
       const candidate = allTabs.find(t => normalizeUrl(t.url) === targetN)
       if (candidate?.id != null) {
-        try { await chrome.tabs.update(candidate.id, { active: true }) } catch {}
+        try { await chrome.tabs.update(candidate.id, { active: true }) } catch { }
       }
     }
   } else if (openedTabIds.length) {
-    try { await chrome.tabs.update(openedTabIds[0], { active: true }) } catch {}
+    try { await chrome.tabs.update(openedTabIds[0], { active: true }) } catch { }
   }
 
   // Persist lastActiveAt

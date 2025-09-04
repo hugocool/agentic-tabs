@@ -8,6 +8,7 @@ Plasmo + LangGraph.js powered browser extension for agentic tab triage, New Tab 
 - Pins a Manager tab (index 0, pinned) in every new window automatically.
 - Maintains a sessionId → windowIds mapping in `chrome.storage.session`.
 - Local persistence of sessions in `chrome.storage.local` with startup rehydration.
+ - Ensures a pinned Manager tab exists in every window on install/startup (idempotent; no focus steal).
 - LangGraph pipeline: collect → classify → upsert (Notion) → act (close/group tabs).
 - On-device classifier via Chrome Prompt API (Gemini Nano) with cloud fallback for Edge/other Chromium.
 - Notion upsert: resources (by URL) + session page with relations.

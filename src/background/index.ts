@@ -1,7 +1,8 @@
 // Background script: pin Manager tab for every new window, manage sessions, message handling
 import { createSessionForWindow, getSessionIdForWindow, addWindowToSession } from "./session-map"
-import { runGraph } from "./graph"
+import { runTriage } from "./graph"
 import { upsertSession, rehydrateFromOpenTabs, listSessionsForNTP, resumeSession, resumeSessionOpenMissing } from "./local-store"
+import { ensureManagerTabsForAllWindows, ensureManagerInWindow } from "./manager-backfill"
 
 // Pin a Manager tab for each new window
 chrome.windows.onCreated.addListener(async w => {
@@ -35,7 +36,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             } else sendResponse({ ok: false })
         } else if (msg?.type === "RUN_TRIAGE") {
             if (msg.sessionId) {
-                await runGraph(msg.sessionId)
+                await runTriage(msg.sessionId)
                 sendResponse({ ok: true })
             } else sendResponse({ ok: false })
         } else if (msg?.type === "SAVE_LOCAL_STATE") {
@@ -75,10 +76,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Startup / Installed hooks → rehydrate runtime session map
 try {
     chrome.runtime.onStartup.addListener(async () => {
+        try { await ensureManagerTabsForAllWindows() } catch (e) { console.warn("managerBackfill@startup", e) }
         try { await rehydrateFromOpenTabs() } catch (e) { console.warn("rehydrate@startup", e) }
     })
 } catch {}
 
 chrome.runtime.onInstalled.addListener(async () => {
+    try { await ensureManagerTabsForAllWindows() } catch (e) { console.warn("managerBackfill@installed", e) }
     try { await rehydrateFromOpenTabs() } catch (e) { console.warn("rehydrate@installed", e) }
 })
