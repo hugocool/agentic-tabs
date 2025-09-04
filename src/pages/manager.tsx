@@ -24,12 +24,26 @@ function Manager() {
         })
     }
 
+    const resume = () => {
+        if (!sessionId) return
+        setRunning(true)
+        setStatus("Resuming...")
+        chrome.runtime.sendMessage({ type: "RESUME_SESSION", sessionId, mode: "reuse", open: "keep" }, resp => {
+            setRunning(false)
+            if (resp?.ok) setStatus(`Resumed: opened ${resp.openedCount}`)
+            else setStatus("Resume failed")
+        })
+    }
+
     return (
         <div style={{ fontFamily: "system-ui", padding: 12, width: 300 }}>
             <h3 style={{ marginTop: 0 }}>Manager</h3>
             <div style={{ fontSize: 12, opacity: 0.7 }}>Session: {sessionId || "…"}</div>
             <button disabled={!sessionId || running} onClick={runTriage} style={{ marginTop: 8 }}>
                 {running ? "Working…" : "Save & Clean"}
+            </button>
+            <button disabled={!sessionId || running} onClick={resume} style={{ marginTop: 8, marginLeft: 8 }}>
+                Resume session
             </button>
             {status && <div style={{ marginTop: 8, fontSize: 12 }}>{status}</div>}
             <hr />

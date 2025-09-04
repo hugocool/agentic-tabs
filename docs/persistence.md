@@ -77,6 +77,8 @@ Algorithm run on `onStartup` and `onInstalled` (and available via message `REHYD
 
 Telemetry: a single summarized log line is emitted: `[rehydrate] windows=<n> attached=<n> matched=<m> unmatched=<u>`.
 
+Edge compatibility: if `chrome.storage.session` is not available in your Edge build, the runtime map temporarily falls back to `chrome.storage.local` under the same key (`sessionMap`). Persistence still lives in `storage.local`. On newer Edge versions (Chromium ≥ 102), `storage.session` is used.
+
 ## Resume Behavior
 
 `RESUME_SESSION { sessionId }` opens missing `Keep` URLs only and applies tab groups according to `items[].group`. If any `Keep` URL is already open anywhere, it is not opened again (idempotent). The current window is attached to the session in the runtime map.
@@ -99,4 +101,3 @@ Telemetry: a single summarized log line is emitted: `[rehydrate] windows=<n> att
 - `chrome.storage.local` provides ~5MB per extension.
 - We store only what we need (URL, decision, minimal metadata) and cap items per session.
 - Consider pruning old sessions or archiving to Notion if you approach limits.
-

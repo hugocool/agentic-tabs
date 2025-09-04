@@ -1,7 +1,7 @@
 // Background script: pin Manager tab for every new window, manage sessions, message handling
 import { createSessionForWindow, getSessionIdForWindow, addWindowToSession } from "./session-map"
 import { runGraph } from "./graph"
-import { upsertSession, rehydrateFromOpenTabs, listSessionsForNTP, resumeSessionOpenMissing } from "./local-store"
+import { upsertSession, rehydrateFromOpenTabs, listSessionsForNTP, resumeSession, resumeSessionOpenMissing } from "./local-store"
 
 // Pin a Manager tab for each new window
 chrome.windows.onCreated.addListener(async w => {
@@ -61,7 +61,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse({ ok: true, sessions: rows })
         } else if (msg?.type === "RESUME_SESSION") {
             if (!msg.sessionId) return sendResponse({ ok: false })
-            const res = await resumeSessionOpenMissing(msg.sessionId)
+            const { sessionId, mode, open, focusUrl } = msg
+            // Back-compat: if no options provided, use minimal open-missing
+            const res = (mode || open || focusUrl)
+                ? await resumeSession({ sessionId, mode, open, focusUrl })
+                : await resumeSessionOpenMissing(sessionId)
             sendResponse(res)
         }
     })()

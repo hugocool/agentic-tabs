@@ -29,6 +29,15 @@ export type SessionStoreV1 = {
   recentIds: string[]
 }
 
+export type DecisionRow = {
+  url?: string
+  title?: string
+  decision: Decision
+  group?: string
+  project?: string
+  task?: string
+}
+
 const STORE_KEY = "sessionStore_v1"
 const MAX_ITEMS_PER_SESSION = 1000
 const MIN_MATCHES = 2
@@ -52,7 +61,8 @@ export function normalizeUrl(input?: string | null): string | undefined {
       }
     })
     toDelete.forEach(k => params.delete(k))
-    const path = u.pathname.replace(/\/$/, "") || "/"
+    // Preserve original path case and trailing slash
+    const path = u.pathname || "/"
     const query = params.toString()
     return `${scheme}//${host}${path}${query ? `?${query}` : ""}`
   } catch {
@@ -75,12 +85,13 @@ function computeCachedFields(session: SessionLocal): SessionLocal {
   const keepSet: string[] = []
   const reviewSet: string[] = []
   for (const it of session.items) {
+    // Cache normalized (lowercase scheme/host, strip tracking/hash), preserve path case
     const n = normalizeUrl(it.url)
     if (!n) continue
     if (it.decision === "Keep") keepSet.push(n)
     if (it.decision === "Review") reviewSet.push(n)
     try {
-      const d = new URL(n).hostname
+      const d = new URL(n).hostname.toLowerCase()
       if (it.decision === "Keep" || it.decision === "Review") domains[d] = (domains[d] || 0) + 1
     } catch {}
   }
@@ -90,7 +101,7 @@ function computeCachedFields(session: SessionLocal): SessionLocal {
   return session
 }
 
-export async function upsertSession(input: { sessionId: string; decisions: SessionItem[] }) {
+export async function upsertSession(input: { sessionId: string; decisions: DecisionRow[] }) {
   const now = new Date().toISOString()
   const store = await loadStore()
   const id = input.sessionId
@@ -148,22 +159,27 @@ export async function listSessionsForNTP(limit?: number): Promise<{
   id: string
   name?: string
   lastActiveAt: string
-  counts: { keep: number; review: number; total: number }
+  counts: { keep: number; archive: number; review: number; drop: number }
 }[]> {
   const store = await loadStore()
   const ids = store.recentIds.length ? store.recentIds : Object.keys(store.sessions)
   const rows = ids.map(id => store.sessions[id]).filter(Boolean)
   rows.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))
-  const out = rows.map(s => ({
-    id: s.id,
-    name: s.name,
-    lastActiveAt: s.lastActiveAt,
-    counts: {
-      keep: s.items.filter(i => i.decision === "Keep").length,
-      review: s.items.filter(i => i.decision === "Review").length,
-      total: s.items.length
+  const out = rows.map(s => {
+    const counts = { keep: 0, archive: 0, review: 0, drop: 0 }
+    for (const it of s.items) {
+      if (it.decision === "Keep") counts.keep++
+      else if (it.decision === "Archive") counts.archive++
+      else if (it.decision === "Review") counts.review++
+      else counts.drop++
     }
-  }))
+    return {
+      id: s.id,
+      name: s.name,
+      lastActiveAt: s.lastActiveAt,
+      counts
+    }
+  })
   return typeof limit === "number" ? out.slice(0, limit) : out
 }
 
@@ -225,7 +241,17 @@ export async function rehydrateFromOpenTabs(): Promise<RehydrateSummary> {
     }
   }
 
-  await chrome.storage.session.set({ sessionMap })
+  // Prefer session storage; fallback to local if session area is unavailable (older Edge)
+  try {
+    // @ts-ignore
+    if ((chrome.storage as any)?.session?.set) {
+      await chrome.storage.session.set({ sessionMap })
+    } else {
+      await chrome.storage.local.set({ sessionMap })
+    }
+  } catch {
+    await chrome.storage.local.set({ sessionMap })
+  }
 
   const summary: RehydrateSummary = {
     windowsConsidered: byWindow.size,
@@ -289,12 +315,198 @@ export async function resumeSessionOpenMissing(sessionId: string) {
   }
 
   // Attach current window to session runtime map
-  const { sessionMap = {} } = await chrome.storage.session.get("sessionMap")
+  let sessionMap: Record<string, number[]> = {}
+  try {
+    const bag = await chrome.storage.session.get("sessionMap")
+    sessionMap = (bag?.sessionMap || {}) as Record<string, number[]>
+  } catch {
+    const bag = await chrome.storage.local.get("sessionMap")
+    sessionMap = (bag?.sessionMap || {}) as Record<string, number[]>
+  }
   const arr = sessionMap[sessionId] || []
   if (!arr.includes(currentWin.id!)) arr.push(currentWin.id!)
   sessionMap[sessionId] = arr
-  await chrome.storage.session.set({ sessionMap })
+  try {
+    // @ts-ignore
+    if ((chrome.storage as any)?.session?.set) {
+      await chrome.storage.session.set({ sessionMap })
+    } else {
+      await chrome.storage.local.set({ sessionMap })
+    }
+  } catch {
+    await chrome.storage.local.set({ sessionMap })
+  }
 
   return { ok: true, opened: openedTabIds.length }
 }
 
+// Additional helpers for AT-2
+export function canonicalizeUrl(u?: string | null): string {
+  if (!u) return ""
+  try {
+    const x = new URL(u)
+    x.hash = ""
+    if (x.pathname.endsWith("/") && x.pathname !== "/") x.pathname = x.pathname.slice(0, -1)
+    return x.toString()
+  } catch {
+    return String(u)
+  }
+}
+
+export function computeToOpen(params: {
+  decisions: SessionItem[]
+  includeArchive?: boolean
+  alreadyOpen: Set<string> // normalized or canonicalized
+}) {
+  const includeArchive = !!params.includeArchive
+  const wanted = new Set<string>()
+  for (const it of params.decisions) {
+    if (!it.url) continue
+    if (it.decision === "Keep" || (includeArchive && it.decision === "Archive")) {
+      const id = normalizeUrl(it.url)
+      if (id) wanted.add(id)
+    }
+  }
+  const toOpen: string[] = []
+  for (const u of wanted) if (!params.alreadyOpen.has(u)) toOpen.push(u)
+  return toOpen
+}
+
+export async function resumeSession(args: {
+  sessionId: string
+  mode?: "reuse" | "newWindow"
+  open?: "keep" | "keep+archive"
+  focusUrl?: string
+}): Promise<{ ok: boolean; openedCount: number; skippedCount: number; groupedCount: number; windowIds: number[]; reason?: string }> {
+  const { sessionId } = args
+  const mode = args.mode || "reuse"
+  const includeArchive = args.open === "keep+archive"
+
+  const store = await loadStore()
+  let session = store.sessions[sessionId]
+  if (!session || !session.items || session.items.length === 0) {
+    // Lazy Notion fallback
+    try {
+      const mod = await import("./notion")
+      const nf = await mod.loadFromNotion(sessionId)
+      if (nf?.items?.length) {
+        // Convert into SessionLocal shape minimally
+        session = {
+          id: sessionId,
+          createdAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          items: nf.items.map(i => ({ url: i.url, title: i.title, decision: "Keep", group: i.group || "Session" }))
+        }
+      }
+    } catch (e) { console.warn("Notion fallback import failed", e) }
+  }
+  if (!session || !session.items || session.items.length === 0) {
+    return { ok: false, openedCount: 0, skippedCount: 0, groupedCount: 0, windowIds: [], reason: "no_session" }
+  }
+
+  // Resolve target windows
+  let windowIds: number[] = []
+  try {
+    const mod = await import("./session-map")
+    windowIds = await (mod as any).ensureWindows(sessionId)
+    if (mode === "newWindow" || windowIds.length === 0) {
+      const urlsFirst: string[] = []
+      const win = await chrome.windows.create({ url: urlsFirst.length ? urlsFirst : undefined })
+      if (win?.id != null) {
+        windowIds.push(win.id)
+        await (mod as any).attachWindow(sessionId, win.id)
+      }
+    }
+  } catch (e) {
+    console.warn("ensure/attach windows failed", e)
+  }
+  if (windowIds.length === 0) {
+    const win = await chrome.windows.create({})
+    if (win?.id != null) windowIds.push(win.id)
+  }
+
+  // Compute already open set across target windows (idempotence)
+  const openSet = new Set<string>()
+  for (const wid of windowIds) {
+    try {
+      const tabs = await chrome.tabs.query({ windowId: wid })
+      for (const t of tabs) {
+        const n = normalizeUrl(t.url)
+        if (n) openSet.add(n)
+      }
+    } catch {}
+  }
+
+  const toOpenNorm = computeToOpen({ decisions: session.items, includeArchive, alreadyOpen: openSet })
+  // Map normalized URL back to original for open call
+  const normToOriginal = new Map<string, string>()
+  for (const it of session.items) {
+    const n = normalizeUrl(it.url)
+    if (n && !normToOriginal.has(n)) normToOriginal.set(n, it.url)
+  }
+  const toOpenOriginal = toOpenNorm.map(u => normToOriginal.get(u) || u)
+
+  // Open missing tabs in the first target window
+  const primaryWin = windowIds[0]
+  const openedTabIds: number[] = []
+  for (const url of toOpenOriginal) {
+    if (!/^https?:\/\//i.test(url)) continue
+    try {
+      const tab = await chrome.tabs.create({ windowId: primaryWin, url })
+      if (tab?.id != null) openedTabIds.push(tab.id)
+    } catch (e) { console.warn("open failed", url, e) }
+  }
+
+  // Group kept tabs by group within each window
+  let groupedCount = 0
+  const keepItems = session.items.filter(i => i.decision === "Keep")
+  const keepSet = new Set(keepItems.map(i => normalizeUrl(i.url)).filter(Boolean) as string[])
+  for (const wid of windowIds) {
+    try {
+      const tabs = await chrome.tabs.query({ windowId: wid })
+      // Build group -> tabIds
+      const byGroup: Record<string, number[]> = {}
+      for (const it of keepItems) {
+        const n = normalizeUrl(it.url)
+        if (!n || !keepSet.has(n)) continue
+        const g = it.group || "Session"
+        const matched = tabs.filter(t => normalizeUrl(t.url) === n && t.id != null)
+        const ids = matched.map(t => t.id!) as number[]
+        if (!ids.length) continue
+        byGroup[g] ||= []
+        byGroup[g].push(...ids)
+      }
+      for (const [name, ids] of Object.entries(byGroup)) {
+        if (ids.length < 2) continue
+        try {
+          const gid = await chrome.tabs.group({ tabIds: Array.from(new Set(ids)) })
+          await chrome.tabGroups.update(gid, { title: name, color: "blue" })
+          groupedCount++
+        } catch (e) { console.warn("group failed", e) }
+      }
+    } catch {}
+  }
+
+  // Focus handling
+  if (args.focusUrl) {
+    const targetN = normalizeUrl(args.focusUrl)
+    if (targetN) {
+      const allTabs = await chrome.tabs.query({ windowId: primaryWin })
+      const candidate = allTabs.find(t => normalizeUrl(t.url) === targetN)
+      if (candidate?.id != null) {
+        try { await chrome.tabs.update(candidate.id, { active: true }) } catch {}
+      }
+    }
+  } else if (openedTabIds.length) {
+    try { await chrome.tabs.update(openedTabIds[0], { active: true }) } catch {}
+  }
+
+  // Persist lastActiveAt
+  store.sessions[sessionId] = computeCachedFields({ ...session, lastActiveAt: new Date().toISOString() })
+  await saveStore(store)
+
+  const openedCount = openedTabIds.length
+  const skippedCount = Math.max(0, toOpenOriginal.length - openedCount)
+  console.log(`[resume] session=${sessionId} windows=${windowIds.length} opened=${openedCount} grouped=${groupedCount}`)
+  return { ok: true, openedCount, skippedCount, groupedCount, windowIds }
+}

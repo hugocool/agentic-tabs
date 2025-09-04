@@ -84,6 +84,14 @@ Recommended DB properties (Resources): Name (title), URL (url), Status (select),
 
 See `docs/persistence.md` for details on the local storage schema, rehydration algorithm, and safety rules.
 
+### Resume Session
+
+- Use the New Tab page to view recent sessions and click "Resume" to reopen missing Keep tabs and reapply Tab Groups.
+- Background message:
+  - `RESUME_SESSION { sessionId, mode?: "reuse"|"newWindow", open?: "keep"|"keep+archive", focusUrl?: string }`
+- Idempotent: existing tabs are not duplicated; grouping is best-effort and guarded.
+- Edge-ready: no Chrome-only APIs required in resume path; `storage.session` gracefully falls back to `storage.local` for the runtime map if needed.
+
 ## Next Steps / Ideas
 
 - Attach/Detach UI for correcting window-session mapping.
