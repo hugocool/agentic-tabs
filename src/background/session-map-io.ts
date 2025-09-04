@@ -29,3 +29,15 @@ export async function attachWindowToSession(sessionId: string, windowId: number)
     if (!map[sessionId].includes(windowId)) map[sessionId].push(windowId)
     await writeSessionMap(map)
 }
+
+export async function detachWindowFromSession(sessionId: string, windowId: number) {
+    const map = await readSessionMap()
+    if (!map[sessionId]) return
+    map[sessionId] = map[sessionId].filter(id => id !== windowId)
+    await writeSessionMap(map)
+}
+
+export async function listWindowsForSession(sessionId: string): Promise<number[]> {
+    const map = await readSessionMap()
+    return (map[sessionId] || []).slice()
+}

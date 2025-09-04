@@ -8,7 +8,7 @@ export function resumeSessionMsg(sessionId: string, mode: "reuse" | "newWindow" 
     return new Promise(res => chrome.runtime.sendMessage({ type: "RESUME_SESSION", sessionId, mode, open }, res))
 }
 export function listSessions(limit = 5): Promise<{ ok: boolean; sessions?: any[] }> {
-    return new Promise(res => chrome.runtime.sendMessage({ type: "GET_SESSIONS", limit }, res))
+  return new Promise(res => chrome.runtime.sendMessage({ type: "GET_SESSIONS", limit }, res))
 }
 
 export function previewTriage(sessionId: string): Promise<any> {
@@ -16,5 +16,17 @@ export function previewTriage(sessionId: string): Promise<any> {
 }
 
 export function applyDecisionsMsg(sessionId: string, previewId: string, decisions: any[]): Promise<any> {
-    return new Promise(res => chrome.runtime.sendMessage({ type: "APPLY_DECISIONS", sessionId, previewId, decisions }, res))
+  return new Promise(res => chrome.runtime.sendMessage({ type: "APPLY_DECISIONS", sessionId, previewId, decisions }, res))
+}
+
+export function listWindowsMsg(sessionId: string): Promise<any> {
+  return new Promise(res => chrome.runtime.sendMessage({ type: "LIST_WINDOWS", sessionId }, res))
+}
+
+export async function attachHereMsg(sessionId: string): Promise<any> {
+  return new Promise(res => chrome.runtime.sendMessage({ type: "ADD_WINDOW", sessionId }, res))
+}
+
+export async function detachWindowMsg(sessionId: string, windowId: number): Promise<any> {
+  return new Promise(res => chrome.runtime.sendMessage({ type: "REMOVE_WINDOW", sessionId, windowId }, res))
 }

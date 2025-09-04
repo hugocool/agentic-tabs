@@ -8,6 +8,8 @@ import { ok, err, E } from "../shared/errors"
 import { runPreview } from "./graph.preview"
 import { savePreview, getPreview } from "./preview-cache"
 import { applyDecisions } from "./apply"
+import { handleCommand } from "./commands"
+import { readSessionMap, writeSessionMap } from "./session-map-io"
 
 // Pin a Manager tab for each new window
 chrome.windows.onCreated.addListener(async w => {
@@ -99,6 +101,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 logger.error("APPLY_DECISIONS failed", { e: String(e) })
                 sendResponse(err(E.UNHANDLED, "Apply failed"))
             }
+        } else if (msg?.type === "RUN_COMMAND") {
+            try {
+                if (!msg.command) return sendResponse(err(E.MSG_BAD_ARGS, "Missing command"))
+                await handleCommand(msg.command)
+                sendResponse(ok())
+            } catch (e) {
+                logger.error("RUN_COMMAND failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Command failed"))
+            }
+        } else if (msg?.type === "LIST_WINDOWS") {
+            if (!msg.sessionId) return sendResponse(err(E.MSG_BAD_ARGS, "Missing sessionId"))
+            const map = await readSessionMap()
+            sendResponse(ok({ windowIds: map[msg.sessionId] || [] }))
+        } else if (msg?.type === "REMOVE_WINDOW") {
+            const { sessionId, windowId } = msg || {}
+            if (!sessionId || typeof windowId !== "number") return sendResponse(err(E.MSG_BAD_ARGS, "Missing sessionId/windowId"))
+            const map = await readSessionMap()
+            if (map[sessionId]) {
+                map[sessionId] = map[sessionId].filter((id: number) => id !== windowId)
+                await writeSessionMap(map)
+            }
+            sendResponse(ok())
         }
     })()
     return true // async
@@ -115,4 +139,27 @@ try {
 chrome.runtime.onInstalled.addListener(async () => {
     try { await ensureManagerTabsForAllWindows() } catch (e) { console.warn("managerBackfill@installed", e) }
     try { await rehydrateFromOpenTabs() } catch (e) { console.warn("rehydrate@installed", e) }
+})
+
+// Global commands
+try {
+  chrome.commands?.onCommand.addListener(async (command) => {
+    try { await handleCommand(command) } catch (e) { console.warn("onCommand failed", command, e) }
+  })
+} catch {}
+
+// Auto-prune mapping on window close
+chrome.windows.onRemoved.addListener(async (closedId) => {
+    try {
+        const map = await readSessionMap()
+        let changed = false
+        for (const sid of Object.keys(map)) {
+            const arr = map[sid] || []
+            const next = arr.filter(id => id !== closedId)
+            if (next.length !== arr.length) { map[sid] = next; changed = true }
+        }
+        if (changed) await writeSessionMap(map)
+    } catch (e) {
+        console.warn("onRemoved prune failed", e)
+    }
 })
