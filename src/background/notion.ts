@@ -3,7 +3,8 @@ import { notionCallSafe } from "./notion-wrap"
 import { notify } from "./notify"
 import { logger } from "../shared/logger"
 import { E } from "../shared/errors"
-import { loadNotionEnv } from "./notion-env"
+import { loadNotionEnv, loadNotionSchema } from "./notion-env"
+import { buildResourceProperties, mergeRelation } from "./notion-writer"
 
 interface DecisionRow {
     url?: string
@@ -20,7 +21,11 @@ export async function upsertNotion({ sessionId, decisions }: { sessionId: string
         console.warn("Notion credentials/DB IDs missing; skipping upsert")
         return
     }
-    const { notionToken, resourcesDbId, sessionsDbId } = env
+    const schema = await loadNotionSchema().catch(() => null)
+    const { notionToken } = env
+    const resourcesDbId = schema?.resources?.dbId || env.resourcesDbId
+    if (!resourcesDbId) return
+    const sessionsDbId = schema?.sessions?.enabled ? schema?.sessions?.dbId : undefined
     const notion = new Client({ auth: notionToken })
     const resourceIds: string[] = []
 
@@ -28,9 +33,10 @@ export async function upsertNotion({ sessionId, decisions }: { sessionId: string
         if (!d.url) continue
         if (d.decision === "Drop") continue
         // Query by URL property
+        const urlProp = schema?.resources?.urlProp || "URL"
         const qRes = await notionCallSafe(() => (notion as any).databases.query({
             database_id: resourcesDbId as string,
-            filter: { property: "URL", url: { equals: d.url as string } }
+            filter: { property: urlProp, url: { equals: d.url as string } }
         }))
         if (!qRes.ok) {
             if (qRes.error.code === E.NOTION_RATE_LIMIT) {
@@ -40,15 +46,18 @@ export async function upsertNotion({ sessionId, decisions }: { sessionId: string
             continue
         }
         const q = qRes.data as any
-        let pageId: string | undefined = ((q as any).results?.[0] as any)?.id as string | undefined
+        let page: any = (q as any).results?.[0] as any
+        let pageId: string | undefined = page?.id as string | undefined
         if (!pageId) {
-            const props: Record<string, any> = {
-                Name: { title: [{ text: { content: d.title || d.url } }] },
-                URL: { url: d.url as string },
-                Status: { select: { name: d.decision === "Archive" ? "Reference" : "Active" } },
-                Decision: { select: { name: d.decision } }
-            }
-            if (d.group) props.Group = { rich_text: [{ text: { content: d.group } }] }
+            const props: Record<string, any> = schema?.resources
+              ? buildResourceProperties(d as any, schema.resources)
+              : {
+                  Name: { title: [{ text: { content: d.title || d.url } }] },
+                  URL: { url: d.url as string },
+                  Status: { select: { name: d.decision === "Archive" ? "Reference" : "Active" } },
+                  Decision: { select: { name: d.decision } },
+                  ...(d.group ? { Group: { rich_text: [{ text: { content: d.group } }] } } : {})
+                }
             if (d.project) props.Project = { rich_text: [{ text: { content: d.project } }] }
             if (d.task) props.Task = { rich_text: [{ text: { content: d.task } }] }
             const createRes = await notionCallSafe(() => notion.pages.create({
@@ -63,11 +72,29 @@ export async function upsertNotion({ sessionId, decisions }: { sessionId: string
                 continue
             }
             pageId = (createRes.data as any).id
+            page = await notion.pages.retrieve({ page_id: pageId as string })
         }
-        if (pageId) resourceIds.push(pageId)
+        // Relations: merge project/task relations if mapped and resolved
+        if (pageId) {
+          // read existing relations to avoid overwriting
+          const existing = page?.properties || {}
+          const relProps: Record<string, any> = {}
+          if (schema?.resources?.projectRelProp && (d as any).projectId) {
+            const cur = existing?.[schema.resources.projectRelProp]?.relation || []
+            relProps[schema.resources.projectRelProp] = { relation: mergeRelation(cur, (d as any).projectId) }
+          }
+          if (schema?.resources?.taskRelProp && (d as any).taskId) {
+            const cur = existing?.[schema.resources.taskRelProp]?.relation || []
+            relProps[schema.resources.taskRelProp] = { relation: mergeRelation(cur, (d as any).taskId) }
+          }
+          if (Object.keys(relProps).length) {
+            await notion.pages.update({ page_id: pageId, properties: relProps as any })
+          }
+          resourceIds.push(pageId)
+        }
     }
 
-    if (resourceIds.length) {
+    if (resourceIds.length && sessionsDbId) {
         const res = await notionCallSafe(() => notion.pages.create({
             parent: { database_id: sessionsDbId as string },
             properties: {

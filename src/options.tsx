@@ -61,6 +61,7 @@ function Options() {
         <button onClick={onSave}>Save</button>
         <button onClick={onTest}>Test connection</button>
         <button onClick={onReset}>Reset</button>
+        <button onClick={async ()=>{ const url = chrome.runtime.getURL("pages/options-wizard.html"); await chrome.tabs.create({ url }) }}>Open Setup Wizard</button>
       </div>
       {status && <div style={{ marginTop: 8, fontSize: 12 }}>{status}</div>}
       <p style={{ marginTop: 16, fontSize: 12, opacity: 0.7 }}>
@@ -74,4 +75,3 @@ function Options() {
 const root = document.createElement("div")
 document.body.appendChild(root)
 createRoot(root).render(<Options />)
-

@@ -1,5 +1,6 @@
 import { upsertSession, normalizeUrl } from "./local-store"
 import { upsertNotion } from "./notion"
+import { resolveRelations } from "./notion-resolve"
 import { stableHash, getLastApplied, setLastApplied } from "./preview-cache"
 
 type DecisionRow = {
@@ -20,10 +21,12 @@ export async function applyDecisions({ sessionId, decisions, options }: {
   const last = await getLastApplied(sessionId)
   if (last && last === hash) return { openedCount: 0, closedCount: 0, grouped: 0, skipped: 0 }
 
-  // persist
+  // resolve relations to ids for Notion writes
+  const resolved = await resolveRelations(decisions as any)
+  // persist local (titles etc.)
   await upsertSession({ sessionId, decisions: decisions as any })
-  // fire-and-forget notion
-  try { await upsertNotion({ sessionId, decisions: decisions as any }) } catch { }
+  // best-effort Notion write with resolved relations
+  try { await upsertNotion({ sessionId, decisions: resolved as any }) } catch { }
 
   const closeNonKeep = options?.closeNonKeep !== false
   const createGroups = options?.createGroups !== false

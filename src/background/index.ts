@@ -10,6 +10,7 @@ import { savePreview, getPreview } from "./preview-cache"
 import { applyDecisions } from "./apply"
 import { handleCommand } from "./commands"
 import { readSessionMap, writeSessionMap } from "./session-map-io"
+import { capture } from "./capture"
 
 // Pin a Manager tab for each new window
 chrome.windows.onCreated.addListener(async w => {
@@ -123,6 +124,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 await writeSessionMap(map)
             }
             sendResponse(ok())
+        } else if (msg?.type === "CAPTURE_REQUEST") {
+            try {
+                const { scope, sessionId } = msg || {}
+                if (!scope) return sendResponse(err(E.MSG_BAD_ARGS, "Missing scope"))
+                const res = await capture(scope, sessionId)
+                sendResponse(res.ok ? ok(res) : err(E.UNHANDLED, "Capture queued"))
+            } catch (e) {
+                logger.error("CAPTURE_REQUEST failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Capture failed"))
+            }
         }
     })()
     return true // async
@@ -139,6 +150,12 @@ try {
 chrome.runtime.onInstalled.addListener(async () => {
     try { await ensureManagerTabsForAllWindows() } catch (e) { console.warn("managerBackfill@installed", e) }
     try { await rehydrateFromOpenTabs() } catch (e) { console.warn("rehydrate@installed", e) }
+    try {
+        chrome.contextMenus.removeAll()
+        chrome.contextMenus.create({ id: "at-save-active", title: "Save to Resources", contexts: ["page", "action"] })
+        chrome.contextMenus.create({ id: "at-save-window", title: "Save all tabs in window", contexts: ["action"] })
+        chrome.contextMenus.create({ id: "at-save-session", title: "Save all tabs in session", contexts: ["action"] })
+    } catch {}
 })
 
 // Global commands
@@ -146,6 +163,50 @@ try {
   chrome.commands?.onCommand.addListener(async (command) => {
     try { await handleCommand(command) } catch (e) { console.warn("onCommand failed", command, e) }
   })
+} catch {}
+
+// Toolbar action: quick capture active tab
+try {
+    chrome.action.onClicked.addListener(async (tab) => {
+        try {
+            const sid = tab.windowId ? await getSessionIdForWindow(tab.windowId) : undefined
+            await capture("active", sid)
+        } catch (e) { console.warn("action capture failed", e) }
+    })
+} catch {}
+
+// Context menus routing
+try {
+    chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+        try {
+            const winId = tab?.windowId || (await chrome.windows.getCurrent()).id!
+            const sid = await getSessionIdForWindow(winId)
+            if (info.menuItemId === "at-save-active") await capture("active", sid)
+            else if (info.menuItemId === "at-save-window") await capture("window", sid)
+            else if (info.menuItemId === "at-save-session") await capture("session", sid)
+        } catch (e) { console.warn("context capture failed", e) }
+    })
+} catch {}
+
+// Omnibox keyword: at save / save all / save session
+try {
+    chrome.omnibox.onInputChanged.addListener((text, suggest) => {
+        suggest([
+            { content: "save", description: "Save active tab to Resources" },
+            { content: "save all", description: "Save all tabs in current window" },
+            { content: "save session", description: "Save tabs across attached windows" }
+        ] as any)
+    })
+    chrome.omnibox.onInputEntered.addListener(async (text) => {
+        try {
+            const t = (text || "").toLowerCase()
+            const w = await chrome.windows.getCurrent()
+            const sid = await getSessionIdForWindow(w.id!)
+            if (t.startsWith("save session")) await capture("session", sid)
+            else if (t.startsWith("save all")) await capture("window", sid)
+            else await capture("active", sid)
+        } catch (e) { console.warn("omnibox capture failed", e) }
+    })
 } catch {}
 
 // Auto-prune mapping on window close

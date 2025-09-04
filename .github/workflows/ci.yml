@@ -30,8 +30,14 @@ jobs:
       - name: Install deps
         run: pnpm install
       - name: Run tests
-        run: pnpm test -- --run
+        run: npx vitest run --reporter=dot
       - name: Type check
         run: npx tsc --noEmit
       - name: Build extension
         run: pnpm build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: build/**
+          if-no-files-found: warn

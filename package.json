@@ -14,7 +14,8 @@
   "homepage": "https://github.com/your-user/agentic-tabs#readme",
   "scripts": {
     "dev": "plasmo dev",
-    "build": "plasmo build",
+    "prebuild": "node scripts/gen-icons.mjs",
+    "build": "pnpm prebuild && plasmo build",
     "package": "plasmo package",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
@@ -22,6 +23,7 @@
   "manifest": {
     "permissions": [
       "activeTab",
+      "contextMenus",
       "notifications",
       "sessions",
       "storage",
@@ -57,6 +59,9 @@
       "focus-manager": {
         "description": "Focus Manager tab"
       }
+    },
+    "omnibox": {
+      "keyword": "at"
     }
   },
   "engines": {
@@ -75,7 +80,8 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@types/uuid": "^10.0.0",
-    "plasmo": "0.87.2",
+    "plasmo": "0.90.5",
+    "sharp": "^0.33.5",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
