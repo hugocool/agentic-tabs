@@ -1,0 +1,10 @@
+node_modules
+.DS_Store
+dist
+build
+.plasmo
+*.log
+.env
+.env.*
+.npmrc
+
