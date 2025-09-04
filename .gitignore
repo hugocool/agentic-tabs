@@ -7,4 +7,5 @@ build
 .env
 .env.*
 .npmrc
+.history/
 

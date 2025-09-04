@@ -95,39 +95,50 @@ See `docs/persistence.md` for details on the local storage schema, rehydration a
 ## Git & GitHub Setup
 
 1. Initialize git (inside project root):
+
    ```bash
    git init
    git add .
    git commit -m "chore: initial scaffold (plasmo + langgraph + notion integration)"
    ```
+
 2. Create a new empty repo on GitHub named `agentic-tabs` (no README/License/Gitignore so histories don't diverge) via UI OR with GitHub CLI:
+
    ```bash
    gh repo create your-user/agentic-tabs --public --source=. --remote=origin --description "Agentic tab triage extension" --push
    ```
+
    If you used the web UI instead, add remote & push:
+
    ```bash
    git remote add origin git@github.com:your-user/agentic-tabs.git
    git branch -M main
    git push -u origin main
    ```
+
 3. Add branch protection rules (optional): require PR reviews & passing CI.
 4. (Optional) Enable commit signing: `git config commit.gpgsign true`.
 5. NEVER commit secrets. Store Notion token only in local storage (runtime) or a `.env` *not committed*. See `.env.example` for placeholders.
 
 ### Suggested Branch Strategy
+
 * `main`: stable, tagged releases.
-* `dev` (optional): integration branch for upcoming features.
-* Feature branches: `feat/<short-name>`, bugfix: `fix/<issue-id>`.
+- `dev` (optional): integration branch for upcoming features.
+- Feature branches: `feat/<short-name>`, bugfix: `fix/<issue-id>`.
 
 ### Tagging Releases
+
 After testing a version:
+
 ```bash
 git tag -a v0.1.0 -m "v0.1.0 initial prototype"
 git push origin v0.1.0
 ```
 
 ### Optional CI (GitHub Actions)
+
 Add `.github/workflows/ci.yml` to run type check / build:
+
 ```yaml
 name: CI
 on: [push, pull_request]
@@ -151,12 +162,15 @@ jobs:
 ```
 
 ### .env / Secrets
+
 Create a local `.env` (ignored) if you later externalize config:
+
 ```
 NOTION_TOKEN=secret_xxx
 RESOURCES_DB_ID=xxxxx
 SESSIONS_DB_ID=yyyyy
 ```
+
 Load at runtime (if you add env parsing) but currently the project uses `chrome.storage.local` set manually.
 
 ## License
