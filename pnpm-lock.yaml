@@ -5,9 +5,6 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
-  '@langchain/core':
-    specifier: ^0.2.0
-    version: 0.2.36
   '@langchain/langgraph':
     specifier: ^0.0.32
     version: 0.0.32

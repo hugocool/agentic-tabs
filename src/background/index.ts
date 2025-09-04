@@ -3,6 +3,11 @@ import { createSessionForWindow, getSessionIdForWindow, addWindowToSession } fro
 import { runTriage } from "./graph"
 import { upsertSession, rehydrateFromOpenTabs, listSessionsForNTP, resumeSession, resumeSessionOpenMissing } from "./local-store"
 import { ensureManagerTabsForAllWindows, ensureManagerInWindow } from "./manager-backfill"
+import { logger } from "../shared/logger"
+import { ok, err, E } from "../shared/errors"
+import { runPreview } from "./graph.preview"
+import { savePreview, getPreview } from "./preview-cache"
+import { applyDecisions } from "./apply"
 
 // Pin a Manager tab for each new window
 chrome.windows.onCreated.addListener(async w => {
@@ -28,46 +33,72 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (msg?.type === "START_SESSION") {
             const current = await chrome.windows.getCurrent()
             const id = await createSessionForWindow(current.id!)
-            sendResponse({ sessionId: id })
+            sendResponse(ok({ sessionId: id }))
         } else if (msg?.type === "ADD_WINDOW") {
             if (msg.sessionId && sender.tab?.windowId) {
                 await addWindowToSession(msg.sessionId, sender.tab.windowId)
-                sendResponse({ ok: true })
-            } else sendResponse({ ok: false })
+                sendResponse(ok())
+            } else sendResponse(err(E.MSG_BAD_ARGS, "Missing sessionId or windowId"))
         } else if (msg?.type === "RUN_TRIAGE") {
             if (msg.sessionId) {
                 await runTriage(msg.sessionId)
-                sendResponse({ ok: true })
-            } else sendResponse({ ok: false })
+                sendResponse(ok())
+            } else sendResponse(err(E.MSG_BAD_ARGS, "Missing sessionId"))
         } else if (msg?.type === "SAVE_LOCAL_STATE") {
             try {
                 if (!msg.sessionId || !Array.isArray(msg.decisions)) throw new Error("bad_args")
                 await upsertSession({ sessionId: msg.sessionId, decisions: msg.decisions })
-                sendResponse({ ok: true })
+                sendResponse(ok())
             } catch (e) {
-                console.warn("SAVE_LOCAL_STATE failed", e)
-                sendResponse({ ok: false })
+                logger.error("SAVE_LOCAL_STATE failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Failed to save local state"))
             }
         } else if (msg?.type === "REHYDRATE_ON_STARTUP") {
             try {
                 const summary = await rehydrateFromOpenTabs()
-                sendResponse({ ok: true, summary })
+                sendResponse(ok({ summary }))
             } catch (e) {
-                console.warn("Rehydrate failed", e)
-                sendResponse({ ok: false })
+                logger.error("Rehydrate failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Rehydrate failed"))
             }
         } else if (msg?.type === "GET_SESSIONS") {
             const limit = typeof msg.limit === "number" ? msg.limit : undefined
             const rows = await listSessionsForNTP(limit)
-            sendResponse({ ok: true, sessions: rows })
+            sendResponse(ok({ sessions: rows }))
         } else if (msg?.type === "RESUME_SESSION") {
-            if (!msg.sessionId) return sendResponse({ ok: false })
+            if (!msg.sessionId) return sendResponse(err(E.MSG_BAD_ARGS, "Missing sessionId"))
             const { sessionId, mode, open, focusUrl } = msg
             // Back-compat: if no options provided, use minimal open-missing
             const res = (mode || open || focusUrl)
                 ? await resumeSession({ sessionId, mode, open, focusUrl })
                 : await resumeSessionOpenMissing(sessionId)
-            sendResponse(res)
+            if ((res as any).ok === false) sendResponse(res as any)
+            else sendResponse(ok(res))
+        } else if (msg?.type === "PREVIEW_TRIAGE") {
+            if (!msg.sessionId) return sendResponse(err(E.MSG_BAD_ARGS, "Missing sessionId"))
+            const { decisions } = await runPreview(msg.sessionId)
+            const { previewId, hash } = await savePreview(msg.sessionId, decisions as any)
+            const domains: Record<string, number> = {}
+            for (const d of decisions as any[]) {
+                try { const h = new URL(d.url).hostname; domains[h] = (domains[h] || 0) + 1 } catch {}
+            }
+            sendResponse(ok({ previewId, decisions, meta: { count: decisions.length, domains, hash } }))
+        } else if (msg?.type === "APPLY_DECISIONS") {
+            const { sessionId, previewId, decisions, options } = msg
+            if (!sessionId || (!previewId && !Array.isArray(decisions))) return sendResponse(err(E.MSG_BAD_ARGS, "Missing args"))
+            let rows = decisions
+            if (!rows && previewId) {
+                const rec = await getPreview(previewId)
+                rows = rec?.decisions
+            }
+            if (!rows) return sendResponse(err(E.MSG_BAD_ARGS, "No decisions to apply"))
+            try {
+                const summary = await applyDecisions({ sessionId, decisions: rows, options })
+                sendResponse(ok(summary))
+            } catch (e) {
+                logger.error("APPLY_DECISIONS failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Apply failed"))
+            }
         }
     })()
     return true // async

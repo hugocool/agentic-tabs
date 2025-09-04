@@ -1,48 +1,28 @@
 import React, { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { openOptionsPage } from "./options-logic"
+import { startSession, runTriage as runTriageMsg, listSessions, resumeSessionMsg } from "./background/session-client"
 
 function NewTab() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [lastAction, setLastAction] = useState("")
   const [sessions, setSessions] = useState<any[]>([])
 
-  const startSession = () => {
-    chrome.runtime.sendMessage({ type: "START_SESSION" }, resp => {
-      if (resp?.sessionId) {
-        setSessionId(resp.sessionId)
-        setLastAction("Session started")
-      }
-    })
-  }
+  const doStart = () => { startSession().then(r => { if (r.sessionId) { setSessionId(r.sessionId); setLastAction("Session started") } }) }
 
-  const runTriage = () => {
-    if (!sessionId) return
-    chrome.runtime.sendMessage({ type: "RUN_TRIAGE", sessionId }, resp => {
-      setLastAction(resp?.ok ? "Triage executed" : "Triage failed")
-    })
-  }
+  const runTriage = () => { if (sessionId) runTriageMsg(sessionId).then(r => setLastAction(r?.ok ? "Triage executed" : "Triage failed")) }
 
-  const refreshSessions = () => {
-    chrome.runtime.sendMessage({ type: "GET_SESSIONS", limit: 5 }, resp => {
-      if (resp?.ok) setSessions(resp.sessions || [])
-    })
-  }
+  const refreshSessions = () => { listSessions(5).then(r => { if (r?.ok) setSessions((r as any).sessions || (r as any).data?.sessions || []) }) }
 
-  const resume = (id: string) => {
-    chrome.runtime.sendMessage({ type: "RESUME_SESSION", sessionId: id, mode: "reuse", open: "keep" }, resp => {
-      if (resp?.ok) setLastAction(`Resumed ${id}: opened ${resp.openedCount}`)
-      else setLastAction("Resume failed")
-    })
-  }
+  const resume = (id: string) => { resumeSessionMsg(id).then(r => setLastAction(r?.ok ? `Resumed ${id}: opened ${r.openedCount ?? r.data?.openedCount ?? 0}` : "Resume failed")) }
 
   useEffect(() => { refreshSessions() }, [])
 
   return (
-    <div style={{ padding: 24, fontFamily: "system-ui" }}>
+  <div style={{ padding: 24, fontFamily: "system-ui" }}>
       <h2 style={{ marginTop: 0 }}>Agentic Sessions</h2>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={startSession}>Start session</button>
+  <button onClick={doStart}>Start session</button>
         <button disabled={!sessionId} onClick={runTriage}>Run triage</button>
         <button onClick={refreshSessions}>Refresh</button>
         <button onClick={openOptionsPage}>Options</button>

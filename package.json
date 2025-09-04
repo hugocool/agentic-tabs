@@ -16,15 +16,17 @@
     "dev": "plasmo dev",
     "build": "plasmo build",
     "package": "plasmo package",
-    "test": "vitest"
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "manifest": {
     "permissions": [
-      "tabs",
-      "tabGroups",
+      "activeTab",
+      "notifications",
       "sessions",
       "storage",
-      "activeTab"
+      "tabGroups",
+      "tabs"
     ],
     "host_permissions": [
       "https://api.notion.com/*"
@@ -41,24 +43,24 @@
     }
   },
   "engines": {
-    "node": ">=18 <23"
+    "node": ">=20 <23"
   },
   "dependencies": {
-    "@langchain/core": "^0.2.0",
-    "@langchain/langgraph": "^0.0.32",
-    "@notionhq/client": "^2.2.14",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@langchain/langgraph": "^0.4.9",
+    "@notionhq/client": "^5.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "uuid": "^9.0.1",
-    "zod": "^3.23.8"
+    "zod": "^4.1.5",
+    "@langchain/core": "^0.3.73"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.262",
-    "@types/react": "^18.2.46",
-    "@types/react-dom": "^18.2.18",
+    "@types/chrome": "^0.1.6",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
     "@types/uuid": "^10.0.0",
-    "plasmo": "^0.87.2",
-    "typescript": "^5.4.5",
-    "vitest": "^1.6.0"
+    "plasmo": "0.87.2",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   }
 }

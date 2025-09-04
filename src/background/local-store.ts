@@ -1,4 +1,6 @@
 // Local persistence of sessions (v1) + rehydration utilities
+import { readSessionMap, writeSessionMap, attachWindowToSession } from "./session-map-io"
+import { normalizePersistUrl, canonicalDisplayUrl } from "./url"
 
 export type Decision = "Keep" | "Archive" | "Drop" | "Review"
 
@@ -44,44 +46,7 @@ const MIN_MATCHES = 2
 const SCORE_THRESHOLD = 0.4
 
 // URL normalization used for persistence and matching
-export function normalizeUrl(input?: string | null): string | undefined {
-  if (!input) return undefined
-  try {
-    const u = new URL(input)
-    const scheme = u.protocol.toLowerCase()
-    const host = u.hostname.toLowerCase()
-    // Strip hash
-    u.hash = ""
-    // Drop tracking params
-    const params = u.searchParams
-    const toDelete: string[] = []
-    const TRACKING = new Set([
-      "fbclid",
-      "gclid",
-      "yclid",
-      "msclkid",
-      "si",
-      "igshid",
-      "mc_eid",
-      "mc_cid",
-      "vero_id",
-      "_hs",
-      "ref",
-      "ref_src"
-    ])
-    params.forEach((_, rawKey) => {
-      const key = rawKey.toLowerCase()
-      if (key.startsWith("utm_") || TRACKING.has(key)) toDelete.push(rawKey)
-    })
-    toDelete.forEach(k => params.delete(k))
-    // Preserve original path case and trailing slash
-    const path = u.pathname || "/"
-    const query = params.toString()
-    return `${scheme}//${host}${path}${query ? `?${query}` : ""}`
-  } catch {
-    return input || undefined
-  }
-}
+export const normalizeUrl = normalizePersistUrl
 
 export async function loadStore(): Promise<SessionStoreV1> {
   const { [STORE_KEY]: raw } = await chrome.storage.local.get(STORE_KEY)
@@ -154,7 +119,13 @@ export async function upsertSession(input: { sessionId: string; decisions: Decis
     const tail = mergedItems.slice(MAX_ITEMS_PER_SESSION).map(it => ({ ...it, decision: "Archive" as Decision }))
     mergedItems = head.concat(tail)
   }
-
+      const sessions = Object.values(store.sessions)
+      const combinedDecisionUrlSet = new Set<string>()
+      for (const s of sessions) {
+        for (const url of (s.keepSet || []).concat(s.reviewSet || [])) {
+          combinedDecisionUrlSet.add(url)
+        }
+      }
   const updated: SessionLocal = computeCachedFields({
     ...existing,
     items: mergedItems,
@@ -254,17 +225,7 @@ export async function rehydrateFromOpenTabs(): Promise<RehydrateSummary> {
     }
   }
 
-  // Prefer session storage; fallback to local if session area is unavailable (older Edge)
-  try {
-    // @ts-ignore
-    if ((chrome.storage as any)?.session?.set) {
-      await chrome.storage.session.set({ sessionMap })
-    } else {
-      await chrome.storage.local.set({ sessionMap })
-    }
-  } catch {
-    await chrome.storage.local.set({ sessionMap })
-  }
+  await writeSessionMap(sessionMap)
 
   const summary: RehydrateSummary = {
     windowsConsidered: byWindow.size,
@@ -328,42 +289,18 @@ export async function resumeSessionOpenMissing(sessionId: string) {
   }
 
   // Attach current window to session runtime map
-  let sessionMap: Record<string, number[]> = {}
-  try {
-    const bag = await chrome.storage.session.get("sessionMap")
-    sessionMap = (bag?.sessionMap || {}) as Record<string, number[]>
-  } catch {
-    const bag = await chrome.storage.local.get("sessionMap")
-    sessionMap = (bag?.sessionMap || {}) as Record<string, number[]>
-  }
+  let sessionMap = await readSessionMap()
   const arr = sessionMap[sessionId] || []
   if (!arr.includes(currentWin.id!)) arr.push(currentWin.id!)
   sessionMap[sessionId] = arr
-  try {
-    // @ts-ignore
-    if ((chrome.storage as any)?.session?.set) {
-      await chrome.storage.session.set({ sessionMap })
-    } else {
-      await chrome.storage.local.set({ sessionMap })
-    }
-  } catch {
-    await chrome.storage.local.set({ sessionMap })
-  }
+  await writeSessionMap(sessionMap)
 
   return { ok: true, opened: openedTabIds.length }
 }
 
 // Additional helpers for AT-2
 export function canonicalizeUrl(u?: string | null): string {
-  if (!u) return ""
-  try {
-    const x = new URL(u)
-    x.hash = ""
-    if (x.pathname.endsWith("/") && x.pathname !== "/") x.pathname = x.pathname.slice(0, -1)
-    return x.toString()
-  } catch {
-    return String(u)
-  }
+  return canonicalDisplayUrl(u) || ""
 }
 
 export function computeToOpen(params: {
@@ -417,25 +354,27 @@ export async function resumeSession(args: {
     return { ok: false, openedCount: 0, skippedCount: 0, groupedCount: 0, windowIds: [], reason: "no_session" }
   }
 
-  // Resolve target windows
+  // Resolve target windows using session-map-io helpers
   let windowIds: number[] = []
   try {
-    const mod = await import("./session-map")
-    windowIds = await (mod as any).ensureWindows(sessionId)
-    if (mode === "newWindow" || windowIds.length === 0) {
-      const urlsFirst: string[] = []
-      const win = await chrome.windows.create({ url: urlsFirst.length ? urlsFirst : undefined })
+    const map = await readSessionMap()
+    windowIds = (map[sessionId] || []).slice()
+    // Validate existing windows still open
+    const validated: number[] = []
+    for (const wid of windowIds) {
+      try { await chrome.windows.get(wid); validated.push(wid) } catch { /* stale window id */ }
+    }
+    windowIds = validated
+  } catch (e) { console.warn("read session windows failed", e) }
+
+  if (mode === "newWindow" || windowIds.length === 0) {
+    try {
+      const win = await chrome.windows.create({})
       if (win?.id != null) {
         windowIds.push(win.id)
-        await (mod as any).attachWindow(sessionId, win.id)
+        try { await attachWindowToSession(sessionId, win.id) } catch (e) { console.warn("attach window failed", e) }
       }
-    }
-  } catch (e) {
-    console.warn("ensure/attach windows failed", e)
-  }
-  if (windowIds.length === 0) {
-    const win = await chrome.windows.create({})
-    if (win?.id != null) windowIds.push(win.id)
+    } catch (e) { console.warn("create window failed", e) }
   }
 
   // Compute already open set across target windows (idempotence)

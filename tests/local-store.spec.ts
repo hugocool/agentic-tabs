@@ -1,34 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import { normalizeUrl, upsertSession, loadStore } from "../src/background/local-store"
+import { installChromeMock, resetSessionStore } from "./test-helpers"
 
-// Minimal chrome mock
-// @ts-ignore
-global.chrome = {
-  storage: {
-    local: (() => {
-      const bag: Record<string, any> = {}
-      return {
-        async get(keys?: any) {
-          if (!keys) return { ...bag }
-          if (typeof keys === "string") return { [keys]: bag[keys] }
-          const out: Record<string, any> = {}
-          for (const k of keys) out[k] = bag[k]
-          return out
-        },
-        async set(obj: Record<string, any>) {
-          Object.assign(bag, obj)
-        }
-      }
-    })()
-  }
-} as any
+installChromeMock({ withSession: false })
 
 describe("local persistence", () => {
-  beforeEach(async () => {
-    // reset store
-    // @ts-ignore
-    await chrome.storage.local.set({ sessionStore_v1: { version: 1, sessions: {}, recentIds: [] } })
-  })
+  beforeEach(async () => { await resetSessionStore() })
 
   it("normalizes URLs predictably", () => {
     expect(normalizeUrl("https://X.com/a?utm_source=foo#frag")).toBe("https://x.com/a")

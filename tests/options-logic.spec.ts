@@ -1,30 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { loadOptions, saveOptions, resetOptions, testNotionConnection, openOptionsPage } from "../src/options-logic"
+import { installChromeMock } from "./test-helpers"
 
-// chrome + notion mocks
-const makeChrome = () => {
-  const bag: Record<string, any> = {}
-  // @ts-ignore
-  global.chrome = {
-    storage: {
-      local: {
-        async get(k?: any) {
-          if (!k) return { ...bag }
-          if (Array.isArray(k)) { const out: any = {}; for (const x of k) out[x] = bag[x]; return out }
-          if (typeof k === 'string') return { [k]: bag[k] }
-          const out: any = {}; for (const x of Object.keys(k||{})) out[x] = bag[x]; return out
-        },
-        async set(o: any) { Object.assign(bag, o) },
-        async remove(keys: string[] | string) {
-          const arr = Array.isArray(keys) ? keys : [keys];
-          for (const k of arr) delete bag[k]
-        }
-      }
-    },
-    runtime: { openOptionsPage: vi.fn(async () => {}) }
-  } as any
-  return { bag }
-}
+installChromeMock({ withSession: false })
+// Patch runtime.openOptionsPage spy after install
+// @ts-ignore
+chrome.runtime.openOptionsPage = vi.fn(async () => { })
 
 vi.mock("@notionhq/client", () => {
   class Client {
@@ -44,7 +25,7 @@ vi.mock("@notionhq/client", () => {
 })
 
 describe("options logic", () => {
-  beforeEach(() => { makeChrome() })
+  beforeEach(() => { /* state already in mock; each test starts clean enough */ })
 
   it("saves, loads and resets options", async () => {
     await saveOptions({ notionToken: "t", resourcesDbId: "r", sessionsDbId: "s" })

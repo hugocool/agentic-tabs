@@ -1,27 +1,26 @@
 import React, { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { v4 as uuid } from "uuid"
 import { openOptionsPage } from "../options-logic"
+import { startSession, previewTriage, applyDecisionsMsg, resumeSessionMsg } from "../background/session-client"
 
 function Manager() {
     const [sessionId, setSessionId] = useState<string | null>(null)
     const [running, setRunning] = useState(false)
     const [status, setStatus] = useState<string>("")
+    const [preview, setPreview] = useState<{ id: string, rows: any[] } | null>(null)
 
-    useEffect(() => {
-        // On mount ask background which session this window belongs to by creating a dummy start if needed
-        chrome.runtime.sendMessage({ type: "START_SESSION" }, resp => {
-            if (resp?.sessionId) setSessionId(resp.sessionId)
-        })
-    }, [])
+    useEffect(() => { startSession().then(r => r.sessionId && setSessionId(r.sessionId)) }, [])
 
-    const runTriage = () => {
+    const runPreview = () => {
         if (!sessionId) return
         setRunning(true)
-        setStatus("Running triage...")
-        chrome.runtime.sendMessage({ type: "RUN_TRIAGE", sessionId }, resp => {
+        setStatus("Previewing...")
+        previewTriage(sessionId).then(resp => {
             setRunning(false)
-            setStatus(resp?.ok ? "Triage complete" : "Triage failed")
+            if (resp?.ok) {
+                setPreview({ id: resp.data?.previewId || resp.previewId, rows: resp.data?.decisions || resp.decisions || [] })
+                setStatus(`Preview ready (${(resp.data?.meta?.count) ?? (resp.decisions?.length || 0)})`)
+            } else setStatus("Preview failed")
         })
     }
 
@@ -29,10 +28,9 @@ function Manager() {
         if (!sessionId) return
         setRunning(true)
         setStatus("Resuming...")
-        chrome.runtime.sendMessage({ type: "RESUME_SESSION", sessionId, mode: "reuse", open: "keep" }, resp => {
+        resumeSessionMsg(sessionId).then(resp => {
             setRunning(false)
-            if (resp?.ok) setStatus(`Resumed: opened ${resp.openedCount}`)
-            else setStatus("Resume failed")
+            setStatus(resp?.ok ? `Resumed: opened ${resp.openedCount ?? resp.data?.openedCount ?? 0}` : "Resume failed")
         })
     }
 
@@ -40,8 +38,8 @@ function Manager() {
         <div style={{ fontFamily: "system-ui", padding: 12, width: 300 }}>
             <h3 style={{ marginTop: 0 }}>Manager</h3>
             <div style={{ fontSize: 12, opacity: 0.7 }}>Session: {sessionId || "…"}</div>
-            <button disabled={!sessionId || running} onClick={runTriage} style={{ marginTop: 8 }}>
-                {running ? "Working…" : "Save & Clean"}
+            <button disabled={!sessionId || running} onClick={runPreview} style={{ marginTop: 8 }}>
+                {running ? "Working…" : (preview ? "Re-preview" : "Preview")}
             </button>
             <button disabled={!sessionId || running} onClick={resume} style={{ marginTop: 8, marginLeft: 8 }}>
                 Resume session
@@ -51,6 +49,40 @@ function Manager() {
             </button>
             {status && <div style={{ marginTop: 8, fontSize: 12 }}>{status}</div>}
             <hr />
+            {preview && (
+                <div style={{ fontSize: 12 }}>
+                    <div style={{ marginBottom: 8 }}>Preview ({preview.rows.length})</div>
+                    <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #eee" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ textAlign: "left", padding: 4 }}>Title</th>
+                                    <th style={{ textAlign: "left", padding: 4 }}>Decision</th>
+                                    <th style={{ textAlign: "left", padding: 4 }}>Group</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {preview.rows.map((r, i) => (
+                                    <tr key={i}>
+                                        <td style={{ padding: 4, maxWidth: 160, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{r.title || r.url}</td>
+                                        <td style={{ padding: 4 }}>
+                                            <select value={r.decision} onChange={e => setPreview(p => p && { ...p, rows: p.rows.map((x, j) => j === i ? { ...x, decision: e.target.value } : x) })}>
+                                                {['Keep','Archive','Drop','Review'].map(x => <option key={x} value={x}>{x}</option>)}
+                                            </select>
+                                        </td>
+                                        <td style={{ padding: 4 }}>
+                                            <input value={r.group || ''} onChange={e => setPreview(p => p && { ...p, rows: p.rows.map((x, j) => j === i ? { ...x, group: e.target.value } : x) })} style={{ width: 120 }} />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                        <button disabled={running} onClick={() => applyDecisionsMsg(sessionId!, preview.id, preview.rows).then(resp => setStatus(resp?.ok ? `Applied: closed ${resp.data?.closedCount ?? 0}` : "Apply failed"))}>Apply</button>
+                    </div>
+                </div>
+            )}
             <p style={{ fontSize: 12, lineHeight: 1.4 }}>
                 This pinned tab manages tab classification, Notion upserts, and cleanup.
             </p>
