@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { openOptionsPage } from "./options-logic"
 import { startSession, runTriage as runTriageMsg, listSessions, resumeSessionMsg } from "./background/session-client"
+import { ToastHost, showToast } from "./shared/toast"
 
 function NewTab() {
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -17,6 +18,11 @@ function NewTab() {
   const resume = (id: string) => { resumeSessionMsg(id).then(r => setLastAction(r?.ok ? `Resumed ${id}: opened ${r.openedCount ?? r.data?.openedCount ?? 0}` : "Resume failed")) }
 
   useEffect(() => { refreshSessions() }, [])
+  useEffect(() => {
+    const listener = (msg: any) => { if (msg?.type === "TOAST") showToast(msg.text, msg.kind === "error" ? "error" : "info") }
+    chrome.runtime.onMessage.addListener(listener)
+    return () => { chrome.runtime.onMessage.removeListener(listener) }
+  }, [])
 
   return (
     <div style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -54,6 +60,7 @@ function NewTab() {
           <li>In the extension console, set Notion creds via chrome.storage.local.set(...)</li>
         </ol>
       </details>
+      <ToastHost />
     </div>
   )
 }

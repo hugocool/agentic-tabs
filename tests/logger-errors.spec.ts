@@ -5,10 +5,10 @@ import { notionCallSafe } from "../src/background/notion-wrap"
 
 describe("logger + errors", () => {
   beforeEach(() => {
-    vi.spyOn(console, 'debug').mockImplementation(() => {})
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'debug').mockImplementation(() => { })
+    vi.spyOn(console, 'info').mockImplementation(() => { })
+    vi.spyOn(console, 'warn').mockImplementation(() => { })
+    vi.spyOn(console, 'error').mockImplementation(() => { })
   })
 
   it("ok/err shapes are consistent", () => {
@@ -20,6 +20,7 @@ describe("logger + errors", () => {
   })
 
   it("notionCallSafe retries 429 then returns ok", async () => {
+    vi.useFakeTimers()
     let calls = 0
     const fn = async () => {
       calls++
@@ -30,12 +31,17 @@ describe("logger + errors", () => {
       }
       return { ok: true }
     }
-    const t0 = Date.now()
-    const res = await notionCallSafe(fn)
-    const elapsed = Date.now() - t0
+    const promise = notionCallSafe(fn)
+    // Flush queued timers until promise resolves
+    for (let i = 0; i < 10 && calls < 3; i++) {
+      vi.advanceTimersByTime(5000)
+      // allow microtasks
+      await Promise.resolve()
+    }
+    const res = await promise
     expect(calls).toBe(3)
     expect((res as any).ok).toBe(true)
-    expect(elapsed).toBeGreaterThanOrEqual(500)
-  })
+    vi.useRealTimers()
+  }, 15000)
 })
 

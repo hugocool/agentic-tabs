@@ -56,3 +56,24 @@ export function validateResourceMapping(map: any, props: DbProps) {
   return { ok: errors.length === 0, errors }
 }
 
+// Fetch DB property schema (name -> { type })
+export async function fetchDatabaseProps(dbId: string, token: string): Promise<DbProps> {
+  const { Client } = await import("@notionhq/client")
+  const notion = new Client({ auth: token }) as any
+  const db = await notion.databases.retrieve({ database_id: dbId })
+  const out: DbProps = {}
+  Object.entries((db as any).properties || {}).forEach(([name, def]: any) => {
+    out[name] = { type: def?.type }
+  })
+  return out
+}
+
+// Back-compat synthesizer from a minimal env (resources DB only)
+export function synthesizeDefaultSchema(props: DbProps, dbId: string) {
+  const firstOf = (typ: string) => Object.entries(props).find(([, v]) => v.type === typ)?.[0]
+  const titleProp = firstOf("title") || "Name"
+  const urlProp = firstOf("url") || "URL"
+  return {
+    resources: { dbId, titleProp, urlProp }
+  }
+}

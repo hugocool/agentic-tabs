@@ -11,6 +11,8 @@ import { applyDecisions } from "./apply"
 import { handleCommand } from "./commands"
 import { readSessionMap, writeSessionMap } from "./session-map-io"
 import { capture } from "./capture"
+import { searchResources, attachToResource } from "./notion-resources"
+import { resolveRelations } from "./notion-resolve"
 
 // Pin a Manager tab for each new window
 chrome.windows.onCreated.addListener(async w => {
@@ -102,6 +104,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 logger.error("APPLY_DECISIONS failed", { e: String(e) })
                 sendResponse(err(E.UNHANDLED, "Apply failed"))
             }
+        } else if (msg?.type === "SAVE_PREVIEW_OVERRIDES") {
+            try {
+                if (!msg.previewId || !Array.isArray(msg.decisions))
+                    return sendResponse(err(E.MSG_BAD_ARGS, "Missing previewId/decisions"))
+                const { updatePreview } = await import("./preview-cache")
+                await updatePreview(msg.previewId, msg.decisions)
+                sendResponse(ok())
+            } catch (e) {
+                logger.error("SAVE_PREVIEW_OVERRIDES failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Failed to save overrides"))
+            }
         } else if (msg?.type === "RUN_COMMAND") {
             try {
                 if (!msg.command) return sendResponse(err(E.MSG_BAD_ARGS, "Missing command"))
@@ -133,6 +146,46 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             } catch (e) {
                 logger.error("CAPTURE_REQUEST failed", { e: String(e) })
                 sendResponse(err(E.UNHANDLED, "Capture failed"))
+            }
+        } else if (msg?.type === "SEARCH_RESOURCES") {
+            try {
+                const q = String(msg.q || "").trim()
+                const items = q ? await searchResources(q, msg.limit || 10) : []
+                sendResponse(ok({ items }))
+            } catch (e) {
+                logger.error("SEARCH_RESOURCES failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Search failed"))
+            }
+        } else if (msg?.type === "ATTACH_TO_RESOURCE") {
+            try {
+                const { targetId, tab, mode } = msg || {}
+                if (!targetId || !mode) return sendResponse(err(E.MSG_BAD_ARGS, "Missing targetId/mode"))
+                const r = await attachToResource({ targetId, tab, mode })
+                sendResponse(r.ok ? ok(r) : err(E.UNHANDLED, (r as any).reason || "Attach failed"))
+            } catch (e) {
+                logger.error("ATTACH_TO_RESOURCE failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Attach failed"))
+            }
+        } else if (msg?.type === "SEARCH_NOTION") {
+            try {
+                const { kind, q, limit } = msg || {}
+                if (!kind || typeof q !== 'string') return sendResponse(err(E.MSG_BAD_ARGS, "Missing kind/q"))
+                const { searchNotion } = await import("./notion-search")
+                const items = await searchNotion(kind, q, limit || 6)
+                sendResponse(ok({ items }))
+            } catch (e) {
+                logger.error("SEARCH_NOTION failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Search failed"))
+            }
+        } else if (msg?.type === "RESOLVE_RELATIONS") {
+            try {
+                const { rows, options } = msg || {}
+                if (!Array.isArray(rows)) return sendResponse(err(E.MSG_BAD_ARGS, "Missing rows"))
+                const out = await resolveRelations(rows, options)
+                sendResponse(ok({ rows: out }))
+            } catch (e) {
+                logger.error("RESOLVE_RELATIONS failed", { e: String(e) })
+                sendResponse(err(E.UNHANDLED, "Resolve failed"))
             }
         }
     })()

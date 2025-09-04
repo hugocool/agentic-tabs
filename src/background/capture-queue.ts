@@ -1,4 +1,5 @@
 import { upsertNotion } from "./notion"
+import { emitToast } from "./toast-bus"
 
 type QItem = { ts: number; rows: Array<{ url: string; title?: string; decision: "Keep"; group?: string; project?: any; task?: any }> }
 
@@ -21,6 +22,7 @@ export async function drainQueue() {
   const head = q[0]
   try {
     await upsertNotion({ sessionId: "quick", decisions: head.rows as any })
+    emitToast(`Flushed ${head.rows.length} queued capture${head.rows.length === 1 ? "" : "s"}`)
     q.shift()
     await chrome.storage.local.set({ [KEY]: q })
     if (q.length) setTimeout(drainQueue, 2000)

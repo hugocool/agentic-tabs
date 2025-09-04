@@ -1,6 +1,7 @@
 import { normalizePersistUrl } from "./url"
 import { resolveRelations } from "./notion-resolve"
 import { upsertNotion } from "./notion"
+import { emitToast } from "./toast-bus"
 import { enqueue } from "./capture-queue"
 import { readSessionMap } from "./session-map-io"
 
@@ -31,8 +32,10 @@ export async function capture(scope: CaptureScope, sessionId?: string) {
   const resolved = await resolveRelations(rows as any).catch(() => rows as any)
   try {
     await upsertNotion({ sessionId: sessionId || "quick", decisions: resolved as any })
+    emitToast(`Saved ${rows.length} tab${rows.length === 1 ? "" : "s"}`)
     return { ok: true, saved: rows.length }
   } catch (e) {
+    emitToast("Capture queued (offline or error)", "warn", "capture-queued", 5000)
     await enqueue(rows as any)
     return { ok: false, queued: rows.length }
   }

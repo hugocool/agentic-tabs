@@ -47,6 +47,12 @@ export type NotionSchemaMap = {
     savedAtProp?: string
     resRelProp?: string
   }
+  options?: {
+    strictTitleMatch?: boolean
+    autoCreateProjects?: boolean
+    autoCreateTasks?: boolean
+    writeReverseLinks?: boolean
+  }
 }
 
 export async function loadNotionSchema(): Promise<NotionSchemaMap | null> {

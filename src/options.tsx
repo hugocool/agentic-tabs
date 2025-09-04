@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { loadOptions, saveOptions, resetOptions, testNotionConnection } from "./options-logic"
+import { ToastHost, showToast } from "./shared/toast"
 
 function Options() {
   const [form, setForm] = useState({
@@ -14,6 +15,11 @@ function Options() {
 
   useEffect(() => {
     loadOptions().then(v => setForm(f => ({ ...f, ...v } as any)))
+  }, [])
+  useEffect(() => {
+    const listener = (msg: any) => { if (msg?.type === "TOAST") showToast(msg.text, msg.kind === "error" ? "error" : "info") }
+    chrome.runtime.onMessage.addListener(listener)
+    return () => { chrome.runtime.onMessage.removeListener(listener) }
   }, [])
 
   const onSave = async () => {
@@ -61,13 +67,14 @@ function Options() {
         <button onClick={onSave}>Save</button>
         <button onClick={onTest}>Test connection</button>
         <button onClick={onReset}>Reset</button>
-        <button onClick={async ()=>{ const url = chrome.runtime.getURL("pages/options-wizard.html"); await chrome.tabs.create({ url }) }}>Open Setup Wizard</button>
+        <button onClick={async () => { const url = chrome.runtime.getURL("pages/options-wizard.html"); await chrome.tabs.create({ url }) }}>Open Setup Wizard</button>
       </div>
       {status && <div style={{ marginTop: 8, fontSize: 12 }}>{status}</div>}
       <p style={{ marginTop: 16, fontSize: 12, opacity: 0.7 }}>
         Create an internal integration and share your databases to grant access.
         See Notion documentation for setup steps.
       </p>
+      <ToastHost />
     </div>
   )
 }

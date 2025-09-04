@@ -41,6 +41,14 @@ export async function getPreview(previewId: string): Promise<PreviewRecord | nul
   return bag?.[previewId] || null
 }
 
+export async function updatePreview(previewId: string, decisions: DecisionRow[]) {
+  const { [KEY]: bag = {} } = await chrome.storage.session.get(KEY)
+  if (bag?.[previewId]) {
+    bag[previewId].decisions = decisions
+    await chrome.storage.session.set({ [KEY]: bag })
+  }
+}
+
 export async function setLastApplied(sessionId: string, hash: string) {
   const k = "lastApplied"
   const { [k]: m = {} } = await chrome.storage.session.get(k)
@@ -53,4 +61,3 @@ export async function getLastApplied(sessionId: string): Promise<string | null> 
   const { [k]: m = {} } = await chrome.storage.session.get(k)
   return m?.[sessionId]?.hash || null
 }
-

@@ -18,6 +18,9 @@ export function buildResourceProperties(d: DecisionRow, m: NotionSchemaMap["reso
   if (m.statusProp && d.decision) props[m.statusProp] = { select: { name: d.decision === "Archive" ? "Reference" : "Active" } }
   if (m.decisionProp && d.decision) props[m.decisionProp] = { select: { name: d.decision } }
   if (m.groupProp && d.group) props[m.groupProp] = { rich_text: [{ text: { content: d.group } }] }
+  // Relations on create (if IDs already resolved)
+  if (m.projectRelProp && d.projectId) props[m.projectRelProp] = { relation: [{ id: d.projectId }] }
+  if (m.taskRelProp && d.taskId) props[m.taskRelProp] = { relation: [{ id: d.taskId }] }
   // Relations optional; will be populated in future tickets
   return props
 }
@@ -27,4 +30,3 @@ export function mergeRelation(arr: any[] | undefined, id: string) {
   set.add(id)
   return Array.from(set).map(id => ({ id }))
 }
-
